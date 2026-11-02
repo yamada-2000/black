@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#000000">
+  <meta name="color-scheme" content="dark">
+  <title>black</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body {
+      width: 100%; height: 100%; margin: 0; padding: 0;
+      overflow: hidden; background: #000; overscroll-behavior: none;
+      -webkit-tap-highlight-color: transparent; touch-action: manipulation;
+      user-select: none; -webkit-user-select: none;
+    }
+    body { position: fixed; inset: 0; }
+  </style>
+</head>
+<body>
+<script>
+(() => {
+  "use strict";
+
+  // 画面には何も表示しない。操作はタップ回数のみ。
+  const TAP_INTERVAL_MS = 480;
+  let tapCount = 0;
+  let tapTimer = null;
+  let stream = null;
+  let recorder = null;
+  let chunks = [];
+  let recording = false;
+  let starting = false;
+  let stopRequested = false;
+  let wakeLock = null;
+
+  function enterFullscreen() {
+    const el = document.documentElement;
+    if (!document.fullscreenElement && el.requestFullscreen) {
+      // フルスクリーンはユーザーのタップ操作から直接要求する。
+      el.requestFullscreen().catch(() => {});
+    }
+  }
+
+  async function keepScreenAwake() {
+    try {
+      if ("wakeLock" in navigator) wakeLock = await navigator.wakeLock.request("screen");
+    } catch (_) {}
+  }
+
+  function chooseMimeType() {
+    if (!window.MediaRecorder || !MediaRecorder.isTypeSupported) return "";
+    const types = [
+      "video/webm;codecs=vp9",
+      "video/webm;codecs=vp8",
+      "video/webm"
+    ];
+    return types.find(type => MediaRecorder.isTypeSupported(type)) || "";
+  }
+
+  async function startRecording() {
+    if (recording || starting) return;
+    starting = true;
+    stopRequested = false;
+    chunks = [];
+
+    // getUserMediaをタップ操作の流れから開始し、背面カメラを要求する。
+    let mediaPromise;
+    try {
+      mediaPromise = navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+          frameRate: { ideal: 30, max: 30 }
+        }
+      });
+    } catch (error) {
+      starting = false;
+      return;
+    }
+
+    try {
+      stream = await mediaPromise;
+      const mimeType = chooseMimeType();
+      recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
+
+      recorder.ondataavailable = event => {
+        if (event.data && event.data.size > 0) chunks.push(event.data);
+      };
+
+      recorder.onerror = () => {
+        cleanup();
+      };
+
+      recorder.onstop = () => {
+        const type = recorder && recorder.mimeType ? recorder.mimeType : "video/webm";
+        const blob = new Blob(chunks, { type });
+        if (blob.size > 0) saveVideo(blob, type);
+        cleanup();
+      };
+
+      recorder.start(1000);
+      recording = true;
+      starting = false;
+      keepScreenAwake();
+
+      if (stopRequested) stopRecording();
+    } catch (error) {
+      starting = false;
+      cleanup();
+    }
+  }
+
+  function saveVideo(blob, type) {
+    const extension = type.includes("mp4") ? "mp4" : "webm";
+    const now = new Date();
+    const pad = n => String(n).padStart(2, "0");
+    const filename = "black-" +
+      now.getFullYear() + pad(now.getMonth() + 1) + pad(now.getDate()) + "-" +
+      pad(now.getHours()) + pad(now.getMinutes()) + pad(now.getSeconds()) +
+      "." + extension;
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.style.display = "none";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  }
+
+  function stopRecording() {
+    if (starting && !recording) {
+      stopRequested = true;
+      return;
+    }
+    if (!recording || !recorder || recorder.state === "inactive") return;
+    recording = false;
+    try { recorder.stop(); } catch (_) { cleanup(); }
+  }
+
+  function cleanup() {
+    recording = false;
+    starting = false;
+    stopRequested = false;
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+      stream = null;
+    }
+    if (wakeLock) {
+      wakeLock.release().catch(() => {});
+      wakeLock = null;
+    }
+    recorder = null;
+    chunks = [];
+  }
+
+  function onTap() {
+    if (tapCount === 0) {
+      tapCount = 1;
+      tapTimer = setTimeout(() => { tapCount = 0; }, TAP_INTERVAL_MS);
+      return;
+    }
+
+    tapCount += 1;
+
+    if (tapCount === 2) {
+      // 2回目のタップ時点で全画面化と録画開始を要求する。
+      enterFullscreen();
+      startRecording();
+      clearTimeout(tapTimer);
+      tapTimer = setTimeout(() => { tapCount = 0; }, TAP_INTERVAL_MS);
+      return;
+    }
+
+    if (tapCount >= 3) {
+      clearTimeout(tapTimer);
+      tapCount = 0;
+      stopRecording();
+    }
+  }
+
+  document.addEventListener("pointerdown", event => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    event.preventDefault();
+    onTap();
+  }, { passive: false });
+
+  document.addEventListener("contextmenu", event => event.preventDefault());
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible" && recording) keepScreenAwake();
+  });
+  window.addEventListener("pagehide", cleanup);
+})();
+</script>
+</body>
+</html>
