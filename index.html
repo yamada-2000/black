@@ -14,6 +14,7 @@
 (()=>{"use strict";
 let taps=0,timer=null,stream=null,recorder=null,chunks=[],recording=false,starting=false,wakeLock=null;
 const TYPE="video/mp4";
+const VIDEO_BITRATE=25000000;
 async function fullscreen(){try{if(!document.fullscreenElement&&document.documentElement.requestFullscreen)await document.documentElement.requestFullscreen()}catch(_){}}
 async function awake(){try{if("wakeLock"in navigator)wakeLock=await navigator.wakeLock.request("screen")}catch(_){}}
 async function releaseWake(){try{if(wakeLock)await wakeLock.release()}catch(_){}wakeLock=null}
@@ -33,8 +34,8 @@ async function repairMP4(blob){
 }
 async function start(){if(recording||starting)return;starting=true;try{
  if(!navigator.mediaDevices?.getUserMedia||typeof MediaRecorder==="undefined"||!MediaRecorder.isTypeSupported(TYPE))return;
- stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:"environment"},width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30,max:30}}});
- recorder=new MediaRecorder(stream,{mimeType:TYPE});chunks=[];
+ stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:"environment"},width:{ideal:3840},height:{ideal:2160},frameRate:{ideal:30,max:30}}});
+ recorder=new MediaRecorder(stream,{mimeType:TYPE,videoBitsPerSecond:VIDEO_BITRATE});chunks=[];
  recorder.addEventListener("dataavailable",e=>{if(e.data?.size)chunks.push(e.data)});
  recorder.addEventListener("stop",async()=>{
   const raw=new Blob(chunks,{type:TYPE});chunks=[];
