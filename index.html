@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <meta name="theme-color" content="#000">
-<title>black</title>
+<title>black - Full HD</title>
 <style>
 *{box-sizing:border-box}html,body{width:100%;height:100%;margin:0;overflow:hidden;background:#000;touch-action:none;overscroll-behavior:none;user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}body{position:fixed;inset:0}
 </style>
@@ -14,12 +14,12 @@
 (()=>{"use strict";
 let taps=0,timer=null,stream=null,recorder=null,chunks=[],recording=false,starting=false,wakeLock=null;
 const TYPE="video/mp4";
-const VIDEO_BITRATE=25000000;
+const VIDEO_BITRATE=8000000;
 async function fullscreen(){try{if(!document.fullscreenElement&&document.documentElement.requestFullscreen)await document.documentElement.requestFullscreen()}catch(_){}}
 async function awake(){try{if("wakeLock"in navigator)wakeLock=await navigator.wakeLock.request("screen")}catch(_){}}
 async function releaseWake(){try{if(wakeLock)await wakeLock.release()}catch(_){}wakeLock=null}
 function stopCamera(){if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;recorder=null;recording=false;starting=false;releaseWake()}
-function save(blob){try{const url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download="black-"+new Date().toISOString().replace(/[:.]/g,"-")+".mp4";a.style.display="none";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000)}catch(_){}}
+function save(blob){try{const url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download="black-fhd-"+new Date().toISOString().replace(/[:.]/g,"-")+".mp4";a.style.display="none";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000)}catch(_){}}
 async function repairMP4(blob){
  const lib=await import("https://cdn.jsdelivr.net/npm/mediabunny@1.62.1/+esm");
  const input=new lib.Input({source:new lib.BlobSource(blob),formats:lib.ALL_FORMATS});
@@ -34,7 +34,7 @@ async function repairMP4(blob){
 }
 async function start(){if(recording||starting)return;starting=true;try{
  if(!navigator.mediaDevices?.getUserMedia||typeof MediaRecorder==="undefined"||!MediaRecorder.isTypeSupported(TYPE))return;
- stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:"environment"},width:{ideal:3840},height:{ideal:2160},frameRate:{ideal:30,max:30}}});
+ stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:"environment"},width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30,max:30}}});
  recorder=new MediaRecorder(stream,{mimeType:TYPE,videoBitsPerSecond:VIDEO_BITRATE});chunks=[];
  recorder.addEventListener("dataavailable",e=>{if(e.data?.size)chunks.push(e.data)});
  recorder.addEventListener("stop",async()=>{
