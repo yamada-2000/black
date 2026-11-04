@@ -19,19 +19,36 @@ async function awake(){try{if("wakeLock"in navigator)wakeLock=await navigator.wa
 async function releaseWake(){try{if(wakeLock)await wakeLock.release()}catch(_){}wakeLock=null}
 function stopCamera(){if(stream)stream.getTracks().forEach(t=>t.stop());stream=null;recorder=null;recording=false;starting=false;releaseWake()}
 function save(blob){try{const url=URL.createObjectURL(blob),a=document.createElement("a");a.href=url;a.download="black-"+new Date().toISOString().replace(/[:.]/g,"-")+".mp4";a.style.display="none";document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000)}catch(_){}}
+async function repairMP4(blob){
+ const lib=await import("https://cdn.jsdelivr.net/npm/mediabunny@1.62.1/+esm");
+ const input=new lib.Input({source:new lib.BlobSource(blob),formats:lib.ALL_FORMATS});
+ const target=new lib.BufferTarget();
+ const output=new lib.Output({format:new lib.Mp4OutputFormat({fastStart:"in-memory"}),target});
+ const conversion=await lib.Conversion.init({input,output,copy:{mode:"forced"}});
+ if(!conversion.isValid||conversion.discardedTracks.length)throw new Error("MP4 remux unavailable");
+ await conversion.execute();
+ const data=target.buffer;
+ if(!data||!data.byteLength)throw new Error("Empty repaired MP4");
+ return new Blob([data],{type:TYPE});
+}
 async function start(){if(recording||starting)return;starting=true;try{
-if(!navigator.mediaDevices?.getUserMedia||typeof MediaRecorder==="undefined"||!MediaRecorder.isTypeSupported(TYPE))return;
-stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:"environment"},width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30,max:30}}});
-recorder=new MediaRecorder(stream,{mimeType:TYPE});chunks=[];
-recorder.addEventListener("dataavailable",e=>{if(e.data?.size)chunks.push(e.data)});
-recorder.addEventListener("stop",()=>{const blob=new Blob(chunks,{type:TYPE});if(blob.size)save(blob);chunks=[];stopCamera()},{once:true});
-recorder.start(1000);recording=true;await awake();
-}catch(_){stopCamera()}finally{starting=false}}
+ if(!navigator.mediaDevices?.getUserMedia||typeof MediaRecorder==="undefined"||!MediaRecorder.isTypeSupported(TYPE))return;
+ stream=await navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:{ideal:"environment"},width:{ideal:1920},height:{ideal:1080},frameRate:{ideal:30,max:30}}});
+ recorder=new MediaRecorder(stream,{mimeType:TYPE});chunks=[];
+ recorder.addEventListener("dataavailable",e=>{if(e.data?.size)chunks.push(e.data)});
+ recorder.addEventListener("stop",async()=>{
+  const raw=new Blob(chunks,{type:TYPE});chunks=[];
+  stopCamera();
+  if(!raw.size)return;
+  try{save(await repairMP4(raw))}catch(_){save(raw)}
+ },{once:true});
+ recorder.start();recording=true;await awake();
+ }catch(_){stopCamera()}finally{starting=false}}
 function stop(){if(!recording||!recorder||recorder.state==="inactive")return;try{recorder.stop()}catch(_){stopCamera()}}
 function tap(){fullscreen();if(timer)clearTimeout(timer);taps++;
-if(!recording&&!starting&&taps>=2){taps=0;start();return}
-if(recording&&taps>=3){taps=0;stop();return}
-timer=setTimeout(()=>{taps=0;timer=null},550)}
+ if(!recording&&!starting&&taps>=2){taps=0;start();return}
+ if(recording&&taps>=3){taps=0;stop();return}
+ timer=setTimeout(()=>{taps=0;timer=null},550)}
 document.addEventListener("pointerdown",e=>{if(e.isPrimary===false)return;e.preventDefault();tap()},{passive:false});
 document.addEventListener("contextmenu",e=>e.preventDefault());
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible"&&recording)awake()});
